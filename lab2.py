@@ -8,6 +8,7 @@ from core.risk_assessment import extract_open_ports, analyze_risks, calculate_ri
 import re
 import subprocess
 import shutil
+from dotenv import load_dotenv
 
 # ==========================================
 # 1. PAGE CONFIGURATION
@@ -21,8 +22,10 @@ st.set_page_config(
 )
 
 # Local Agent Configuration
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"), override=True)
 AGENT_URL = "http://127.0.0.1:8000"
-AGENT_TOKEN = os.getenv("SOC_AGENT_TOKEN")
+AGENT_TOKEN = os.getenv( "SOC_AGENT_TOKEN")
+st.write("Token loaded:", bool(AGENT_TOKEN))
 
 # ==========================================
 # 2. SOC THEME
@@ -240,6 +243,8 @@ with tab1:
                 st.error(error)
 
             st.stop()
+            st.write("TOKEN CHECK:", repr(AGENT_TOKEN))
+
         if not AGENT_TOKEN:
             st.warning(
                 "Nmap scanning is unavailable in the hosted demo. "
@@ -255,7 +260,7 @@ with tab1:
                         "Nmap scanning is unavailable in the hosted demo. "
                         "It requires a locally running SOC Agent."
                     )
-
+                    st.write("Agent token loaded:", bool(AGENT_TOKEN))
                 else:
                     with st.spinner("Scanning target..."):
                         response = requests.post(
