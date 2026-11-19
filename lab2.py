@@ -7,6 +7,7 @@ from core.traffic_analyzer import capture_traffic
 from core.risk_assessment import extract_open_ports, analyze_risks, calculate_risk
 import re
 import subprocess
+import shutil
 
 # ==========================================
 # 1. PAGE CONFIGURATION
@@ -350,7 +351,10 @@ with tab2:
     )
 
     col1, col2 = st.columns(2)
-    tshark_path = r"C:\Program Files\Wireshark\tshark.exe"
+    if os.name == "nt":
+        tshark_path = r"C:\Program Files\Wireshark\tshark.exe"
+    else:
+        tshark_path = shutil.which("tshark")
 
     result = subprocess.run(
         [tshark_path, "-D"],
