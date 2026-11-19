@@ -247,8 +247,11 @@ with tab1:
             try:
                 ip = ipaddress.ip_address(target_ip)
 
-                if not ip.is_private:
-                    st.error("Only private IP addresses are allowed.")
+                if not AGENT_TOKEN:
+                    st.warning(
+                        "Nmap scanning is unavailable in the hosted demo. "
+                        "It requires a locally running SOC Agent."
+                    )
 
                 else:
                     with st.spinner("Scanning target..."):
