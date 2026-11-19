@@ -356,33 +356,47 @@ with tab2:
     else:
         tshark_path = shutil.which("tshark")
 
-    result = subprocess.run(
-        [tshark_path, "-D"],
-        capture_output=True,
-        text=True,
-        timeout=10
-    )
-
     interfaces = []
 
-    if result.returncode == 0:
-        for line in result.stdout.splitlines():
-            parts = line.split(".", 1)
+    if tshark_path:
+        try:
+            result = subprocess.run(
+                [tshark_path, "-D"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
 
-            if len(parts) == 2 and parts[0].strip().isdigit():
-                interface_id = int(parts[0].strip())
-                interface_name = parts[1].strip()
-                interfaces.append((interface_id, interface_name))
+            if result.returncode == 0:
+                for line in result.stdout.splitlines():
+                    parts = line.split(".", 1)
+
+                    if len(parts) == 2 and parts[0].strip().isdigit():
+                        interface_id = int(parts[0].strip())
+                        interface_name = parts[1].strip()
+                        interfaces.append((interface_id, interface_name))
+
+        except Exception as e:
+            st.warning(f"TShark error: {e}")
+    else:
+        st.warning("TShark is not available in this environment.")
+
     with col1:
 
-        interface_choice = st.selectbox(
-            "Select Network Interface",
-            interfaces,
-            format_func=lambda item: "Wi-Fi" if "wi-fi" in item[1].lower() or "wireless" in item[1].lower() else
-            item[1].split(" (")[0],
-        )
+        if interfaces:
+            interface_choice = st.selectbox(
+                "Select Network Interface",
+                interfaces,
+                format_func=lambda item: "Wi-Fi" if "wi-fi" in item[1].lower() or "wireless" in item[1].lower() else
+                item[1].split(" (")[0],
+            )
 
-        interface = interface_choice[0] if interface_choice else None
+            interface = interface_choice[0]
+        else:
+            st.info("No network interfaces available.")
+            interface = None
+
+
 
     with col2:
 
@@ -396,7 +410,8 @@ with tab2:
 
     if st.button(
             "📡 Capture Network Packets",
-            key="capture_packets_button"
+            key="capture_packets_button",
+        disabled=not interfaces
     ):
 
         with st.spinner("Capturing packets..."):
