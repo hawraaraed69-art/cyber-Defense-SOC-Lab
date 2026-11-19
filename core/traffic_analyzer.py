@@ -2,9 +2,7 @@ import subprocess
 import json
 
 
-import shutil
-
-TSHARK_PATH = shutil.which("tshark") or r"C:\Program Files\Wireshark\tshark.exe"
+TSHARK_PATH = r"C:\Program Files\Wireshark\tshark.exe"
 
 
 def capture_traffic(interface, count=50):
@@ -33,14 +31,22 @@ def capture_traffic(interface, count=50):
         for packet in packets:
             layers = packet.get("_source", {}).get("layers", {})
 
+            tcp = layers.get("tcp", {})
+            udp = layers.get("udp", {})
+            frame = layers.get("frame", {})
+
             traffic.append({
                 "source": layers.get("ip", {}).get("ip.src", "N/A"),
                 "destination": layers.get("ip", {}).get("ip.dst", "N/A"),
-                "protocol": layers.get("frame", {}).get("frame.protocols", "N/A"),
-                "length": layers.get("frame", {}).get("frame.len", "N/A")
+                "source_port": tcp.get("tcp.srcport", udp.get("udp.srcport", "N/A")),
+                "destination_port": tcp.get("tcp.dstport", udp.get("udp.dstport", "N/A")),
+                "protocol": frame.get("frame.protocols", "N/A"),
+                "length": frame.get("frame.len", "N/A"),
+                "timestamp": frame.get("frame.time", "N/A")
             })
 
         return traffic
 
     except Exception as e:
         return {"error": str(e)}
+
