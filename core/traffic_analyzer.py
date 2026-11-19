@@ -1,8 +1,15 @@
 import subprocess
 import json
+import os
+import shutil
+
+TSHARK_PATH = (
+    r"C:\Program Files\Wireshark\tshark.exe"
+    if os.name == "nt"
+    else shutil.which("tshark")
+)
 
 
-TSHARK_PATH = r"C:\Program Files\Wireshark\tshark.exe"
 
 
 def capture_traffic(interface, count=50):
