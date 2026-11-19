@@ -241,7 +241,10 @@ with tab1:
 
             st.stop()
         if not AGENT_TOKEN:
-            st.error("SOC_AGENT_TOKEN is not configured.")
+            st.warning(
+                "Nmap scanning is unavailable in the hosted demo. "
+                "It requires a locally running SOC Agent."
+            )
 
         else:
             try:
