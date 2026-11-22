@@ -31,11 +31,20 @@ STUDENT_ID = os.getenv("STUDENT_ID", "student01")
 # بيانات مصادقة الطالب الخاصة بكل جلسة
 # حقل إدخال رمز الطالب ليظهر في واجهة المختبر
 # حقل عادي لإدخال رمز الطالب
-STUDENT_TOKEN = st.text_input(
-    "Enter Student Token",
-    type="default",
-    key="student_token_input"
-)
+
+# زر فتح نافذة إدخال رمز الطالب
+if st.button("🔑 Enter Student Token"):
+    st.session_state.show_token_input = True
+
+# إظهار حقل الرمز عند الضغط على الزر
+if st.session_state.get("show_token_input", False):
+    STUDENT_TOKEN = st.text_input(
+        "Student Token",
+        type="default",
+        key="student_token_input"
+    )
+else:
+    STUDENT_TOKEN = st.session_state.get("student_token_input", "")
 
 # تحميل مفتاح المصادقة الخاص بتطبيق Streamlit للاتصال بخادم Relay
 # يُقرأ من إعدادات Streamlit Cloud أو من متغيرات البيئة عند التشغيل المحلي
