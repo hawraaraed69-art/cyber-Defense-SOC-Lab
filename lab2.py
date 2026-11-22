@@ -30,11 +30,13 @@ RELAY_URL = "https://solitary-hall-00cf.hawraaraed69.workers.dev"
 STUDENT_ID = os.getenv("STUDENT_ID", "student01")
 # بيانات مصادقة الطالب الخاصة بكل جلسة
 # حقل إدخال رمز الطالب ليظهر في واجهة المختبر
+# حقل عادي لإدخال رمز الطالب
 STUDENT_TOKEN = st.text_input(
-    "Student Token",
-    type="password",
+    "Enter Student Token",
+    type="default",
     key="student_token_input"
 )
+
 # تحميل مفتاح المصادقة الخاص بتطبيق Streamlit للاتصال بخادم Relay
 # يُقرأ من إعدادات Streamlit Cloud أو من متغيرات البيئة عند التشغيل المحلي
 try:
