@@ -28,6 +28,13 @@ AGENT_URL = "http://127.0.0.1:8000"
 RELAY_URL = "https://solitary-hall-00cf.hawraaraed69.workers.dev"
 # معرّف الطالب الذي يحدد الجهاز المطلوب إرسال أمر الفحص إليه
 STUDENT_ID = os.getenv("STUDENT_ID", "student01")
+# بيانات مصادقة الطالب الخاصة بكل جلسة
+# حقل إدخال رمز الطالب ليظهر في واجهة المختبر
+STUDENT_TOKEN = st.text_input(
+    "Student Token",
+    type="password",
+    key="student_token_input"
+)
 # تحميل مفتاح المصادقة الخاص بتطبيق Streamlit للاتصال بخادم Relay
 # يُقرأ من إعدادات Streamlit Cloud أو من متغيرات البيئة عند التشغيل المحلي
 try:
@@ -271,7 +278,8 @@ with tab1:
                     response = requests.post(
                         f"{RELAY_URL}/command",
                         json={
-                            "student_id": STUDENT_ID,
+                            "student_id": STUDENT_ID,"student_token":STUDENT_TOKEN,
+
                             "action": "scan",
                             "payload": {
                                 "target": str(ip),
@@ -376,161 +384,88 @@ with tab1:
 # ==========================================
 # TAB 2: WIRESHARK / TSHARK
 # ==========================================
-
 with tab2:
     st.subheader("📦 Network Traffic Capture")
-
-    st.write(
-        "Capture real network packets using Wireshark TShark."
-    )
+    st.write("Capture real network packets using local Wireshark TShark.")
 
     col1, col2 = st.columns(2)
-    if os.name == "nt":
-        tshark_path = r"C:\Program Files\Wireshark\tshark.exe"
-    else:
-        tshark_path = shutil.which("tshark")
 
-    interfaces = []
+    # اختيار واجهة الشبكة على جهاز الطالب
+    interface = st.selectbox(
+        "Select Network Interface",
+        [5, 9, 8],
+        format_func=lambda x: {
+            5: "Wi-Fi",
+            9: "Ethernet",
+            8: "Loopback"
+        }[x]
+    )
 
-    if tshark_path:
-        try:
-            result = subprocess.run(
-                [tshark_path, "-D"],
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
+    # تحديد عدد الحزم
+    packet_count = st.number_input(
+        "Number of Packets",
+        min_value=1,
+        max_value=100,
+        value=20,
+        step=1
+    )
 
-            if result.returncode == 0:
-                for line in result.stdout.splitlines():
-                    parts = line.split(".", 1)
+    if st.button("📡 Capture Network Packets", key="capture_packets_button"):
 
-                    if len(parts) == 2 and parts[0].strip().isdigit():
-                        interface_id = int(parts[0].strip())
-                        interface_name = parts[1].strip()
-                        interfaces.append((interface_id, interface_name))
-
-        except Exception as e:
-            st.warning(f"TShark error: {e}")
-    else:
-        st.warning("TShark is not available in this environment.")
-
-    with col1:
-
-        if interfaces:
-            interface_choice = st.selectbox(
-                "Select Network Interface",
-                interfaces,
-                format_func=lambda item: "Wi-Fi" if "wi-fi" in item[1].lower() or "wireless" in item[1].lower() else
-                item[1].split(" (")[0],
-            )
-
-            interface = interface_choice[0]
-        else:
-            st.info("No network interfaces available.")
-            interface = None
-
-    with col2:
-
-        packet_count = st.number_input(
-            "Number of Packets",
-            min_value=1,
-            max_value=100,
-            value=20,
-            step=1
-        )
-
-    if st.button(
-            "📡 Capture Network Packets",
-            key="capture_packets_button",
-            disabled=not interfaces
-    ):
-
-        with st.spinner("Capturing packets..."):
-
-            results = capture_traffic(
-                int(interface),
-                int(packet_count)
-            )
-
-        if isinstance(results, dict) and "error" in results:
-
-            st.error(results["error"])
-
-        elif results:
-
-            st.success(f"Captured {len(results)} packets.")
-
-            st.dataframe(
-                results,
-                use_container_width=True
-            )
-
-            # Basic Statistics
-            total_packets = len(results)
-
-            total_bytes = sum(
-                int(packet["length"])
-                for packet in results
-                if str(packet["length"]).isdigit()
-            )
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-                st.metric("Total Packets", total_packets)
-
-            with col2:
-                st.metric("Total Data (Bytes)", total_bytes)
-
-            # Protocol Distribution
-            protocol_counts = {}
-
-            for packet in results:
-                protocol = packet["protocol"].split(".")[-1].upper()
-                protocol_counts[protocol] = protocol_counts.get(protocol, 0) + 1
-
-            st.subheader("Protocol Distribution")
-
-            st.bar_chart(
-                protocol_counts,
-                x_label="Protocol",
-                y_label="Packet Count"
-            )
-            destination_counts = {}
-
-            for packet in results:
-                destination = packet["destination"]
-
-                if destination != "N/A":
-                    destination_counts[destination] = destination_counts.get(destination, 0) + 1
-
-            st.subheader("Top Talkers - Destination IPs")
-
-            st.bar_chart(
-                destination_counts,
-                x_label="Destination IP",
-                y_label="Packets Received"
-            )
-            # Top Talkers
-            source_counts = {}
-
-            for packet in results:
-                source = packet["source"]
-
-                if source != "N/A":
-                    source_counts[source] = source_counts.get(source, 0) + 1
-
-            st.subheader("Top Talkers - Source IPs")
-
-            st.bar_chart(
-                source_counts,
-                x_label="Source IP",
-                y_label="Packets Sent"
-            )
+        if not RELAY_APP_SECRET:
+            st.error("Relay authentication is not configured.")
 
         else:
-            st.warning("No packets were returned.")
+            try:
+                with st.spinner("Capturing packets on your device..."):
+
+                    response = requests.post(
+                        f"{RELAY_URL}/command",
+                        json={
+                        "student_id": STUDENT_ID,
+                        "student_token": STUDENT_TOKEN,
+                        "action": "capture",
+                        "payload": {
+                        "interface": interface,
+                        "count": int(packet_count)
+                            }
+
+                        } ,
+                        headers={
+                            "Authorization": f"Bearer {RELAY_APP_SECRET}"
+                        },
+                        timeout=150
+                    )
+
+                    response.raise_for_status()
+                    relay_result = response.json()
+
+                if relay_result.get("error"):
+                    st.error(relay_result["error"])
+
+                else:
+                    results = relay_result.get("data", {}).get("packets", [])
+
+                    if results:
+                        st.success(f"Captured {len(results)} packets.")
+                        st.dataframe(results, use_container_width=True)
+
+                        total_bytes = sum(
+                            int(packet["length"])
+                            for packet in results
+                            if str(packet["length"]).isdigit()
+                        )
+
+                        col1, col2 = st.columns(2)
+
+                        col1.metric("Total Packets", len(results))
+                        col2.metric("Total Data (Bytes)", total_bytes)
+
+                    else:
+                        st.warning("No packets were returned.")
+
+            except requests.exceptions.RequestException as e:
+                st.error(f"Capture request failed: {e}")
 
 # =========================================
 # TAB 3: BANNER GRABBING
