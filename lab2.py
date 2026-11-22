@@ -46,6 +46,12 @@ if st.session_state.get("show_token_input", False):
 else:
     STUDENT_TOKEN = st.session_state.get("student_token_input", "")
 
+    # تحديث الرمز بعد إدخاله
+    if STUDENT_TOKEN:
+        st.success("Student Token entered successfully")
+    else:
+        st.warning("Student Token not entered")
+
 # تحميل مفتاح المصادقة الخاص بتطبيق Streamlit للاتصال بخادم Relay
 # يُقرأ من إعدادات Streamlit Cloud أو من متغيرات البيئة عند التشغيل المحلي
 try:
