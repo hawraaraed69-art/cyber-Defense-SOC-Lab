@@ -24,7 +24,17 @@ st.set_page_config(
 # Local Agent Configuration
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"), override=True)
 AGENT_URL = "http://127.0.0.1:8000"
-AGENT_TOKEN = os.getenv( "SOC_AGENT_TOKEN")
+# عنوان خادم Cloudflare المسؤول عن نقل الأوامر بين الموقع وأجهزة الطلاب
+RELAY_URL = "https://solitary-hall-00cf.hawraaraed69.workers.dev"
+# معرّف الطالب الذي يحدد الجهاز المطلوب إرسال أمر الفحص إليه
+STUDENT_ID = os.getenv("STUDENT_ID", "student01")
+# تحميل مفتاح المصادقة الخاص بتطبيق Streamlit للاتصال بخادم Relay
+# يُقرأ من إعدادات Streamlit Cloud أو من متغيرات البيئة عند التشغيل المحلي
+try:
+    RELAY_APP_SECRET = st.secrets.get("APP_SECRET", os.getenv("APP_SECRET", ""))
+except Exception:
+    RELAY_APP_SECRET = os.getenv("APP_SECRET", "")
+AGENT_TOKEN = os.getenv("SOC_AGENT_TOKEN")
 st.write("Token loaded:", bool(AGENT_TOKEN))
 
 # ==========================================
@@ -181,7 +191,6 @@ tab1, tab2, tab3, tab4 = st.tabs([
 # ==========================================
 # TAB 1: NMAP SCANNER
 # ==========================================
-
 with tab1:
     st.subheader("🔍 Nmap Network Scanner")
 
@@ -189,12 +198,14 @@ with tab1:
         "Scan authorized hosts and inspect open ports and services."
     )
 
+    # إدخال عنوان الجهاز المستهدف
     target_ip = st.text_input(
         "Target IP / Host",
         value="127.0.0.1",
         key="nmap_target"
     )
 
+    # اختيار خيارات فحص Nmap
     selected_options = st.multiselect(
         "Select Nmap Scan Options",
         options=[
@@ -205,14 +216,15 @@ with tab1:
         default=["-sV"],
         key="nmap_options"
     )
+
+    # منع اختيار نوعي TCP المتعارضين
     if "-sS" in selected_options and "-sT" in selected_options:
         st.error("Choose either -sS or -sT, not both.")
         st.stop()
-    if st.button(
-            "🚀 Start Nmap Scan",
-            key="nmap_scan_button"
-    ):
 
+    if st.button("🚀 Start Nmap Scan", key="nmap_scan_button"):
+
+        # التحقق من توافق خيارات الفحص
         validation_errors = []
 
         if "-sS" in selected_options and "-sT" in selected_options:
@@ -238,62 +250,64 @@ with tab1:
                 "Choose only one timing option."
             )
 
+        # إيقاف الفحص عند وجود خيارات غير متوافقة
         if validation_errors:
             for error in validation_errors:
                 st.error(error)
-
             st.stop()
-            st.write("TOKEN CHECK:", repr(AGENT_TOKEN))
 
-        if not AGENT_TOKEN:
-            st.warning(
-                "Nmap scanning is unavailable in the hosted demo. "
-                "It requires a locally running SOC Agent."
-            )
+        # التأكد من وجود مفتاح الاتصال السحابي
+        if not RELAY_APP_SECRET:
+            st.warning("Cloudflare connection is not configured.")
 
         else:
             try:
+                # التحقق من صحة عنوان IP
                 ip = ipaddress.ip_address(target_ip)
 
-                if not AGENT_TOKEN:
-                    st.warning(
-                        "Nmap scanning is unavailable in the hosted demo. "
-                        "It requires a locally running SOC Agent."
-                    )
-                    st.write("Agent token loaded:", bool(AGENT_TOKEN))
-                else:
-                    with st.spinner("Scanning target..."):
-                        response = requests.post(
-                            f"{AGENT_URL}/scan",
-                            params={
+                with st.spinner("Scanning target..."):
+
+                    # إرسال أمر الفحص إلى Cloudflare Relay
+                    response = requests.post(
+                        f"{RELAY_URL}/command",
+                        json={
+                            "student_id": STUDENT_ID,
+                            "action": "scan",
+                            "payload": {
                                 "target": str(ip),
                                 "options": selected_options or ["-sV"]
-                            },
-                            headers={
-                                "Authorization": f"Bearer {AGENT_TOKEN}"
-                            },
-                            timeout=190
-                        )
+                            }
+                        },
+                        headers={
+                            "Authorization": f"Bearer {RELAY_APP_SECRET}"
+                        },
+                        timeout=190
+                    )
 
-                    if response.status_code == 200:
-                        results = response.json()
+                    response.raise_for_status()
+                    relay_result = response.json()
+
+                # التحقق من نتيجة الاتصال بالـ Relay
+                if relay_result.get("error"):
+                    st.error(relay_result["error"])
+
+                else:
+                    results = relay_result.get("data", {})
+
+                    # التحقق من نتيجة تنفيذ Nmap
+                    if results.get("error"):
+                        st.error(f"Scan Error: {results['error']}")
+
+                    else:
+                        nmap_output = results.get("output", "")
 
                         st.success("Scan completed successfully!")
+                        st.code(nmap_output, language="text")
 
-                        st.code(
-                            results.get("output", "No output returned."),
-                            language="text"
-                        )
-
-                        if results.get("error"):
-                            st.error(f"Scan Error: {results['error']}")
-
-                        else:
-                            nmap_output = results.get("output", "")
-
-                            open_ports = extract_open_ports(nmap_output)
-                            findings = analyze_risks(open_ports)
-                            risk = calculate_risk(findings)
+                        # تحليل المنافذ المفتوحة وتقييم المخاطر
+                        open_ports = extract_open_ports(nmap_output)
+                        findings = analyze_risks(open_ports)
+                        risk = calculate_risk(findings)
 
                         st.subheader("Security Risk Assessment")
 
@@ -301,10 +315,13 @@ with tab1:
                             "Risk Indicator Score",
                             f"{risk['score']}/100"
                         )
+
                         st.caption(
                             "Score is based on predefined risk indicators, "
                             "not a confirmed vulnerability or breach probability."
                         )
+
+                        # عرض مستوى المخاطر
                         if risk["level"] == "High":
                             st.error(f"Risk Level: {risk['level']}")
 
@@ -312,11 +329,14 @@ with tab1:
                             st.warning(f"Risk Level: {risk['level']}")
 
                         elif risk["level"] == "No Indicators":
-                            st.info("No known risk indicators detected by current rules.")
+                            st.info(
+                                "No known risk indicators detected by current rules."
+                            )
 
                         else:
                             st.success(f"Risk Level: {risk['level']}")
 
+                        # عرض المشكلات الأمنية المكتشفة
                         if findings:
                             st.markdown("### Detected Security Issues")
 
@@ -325,7 +345,11 @@ with tab1:
                                     st.markdown(
                                         f"**Port {item['port']} — {item['service']}**"
                                     )
-                                    st.caption(f"Service Version: {item.get('version', 'Unknown')}")
+
+                                    st.caption(
+                                        f"Service Version: {item.get('version', 'Unknown')}"
+                                    )
+
                                     st.error(f"Risk Level: {item['risk']}")
                                     st.write(f"Reason: {item['reason']}")
 
@@ -334,20 +358,19 @@ with tab1:
                                     )
 
                         else:
-                            st.success("No known risk indicators detected.")
-
-                    else:
-                        st.error(f"Scan failed: {response.text}")
+                            st.success(
+                                "No known risk indicators detected."
+                            )
 
             except ValueError:
                 st.error("Please enter a valid IP address.")
 
             except requests.exceptions.RequestException as e:
-                st.error(f"Agent connection error: {e}")
+                st.error(f"Relay connection error: {e}")
 
-        st.caption(
-            "Only scan systems you own or have permission to test."
-        )
+    st.caption(
+        "Only scan systems you own or have permission to test."
+    )
 
 
 # ==========================================
@@ -407,8 +430,6 @@ with tab2:
             st.info("No network interfaces available.")
             interface = None
 
-
-
     with col2:
 
         packet_count = st.number_input(
@@ -422,7 +443,7 @@ with tab2:
     if st.button(
             "📡 Capture Network Packets",
             key="capture_packets_button",
-        disabled=not interfaces
+            disabled=not interfaces
     ):
 
         with st.spinner("Capturing packets..."):
