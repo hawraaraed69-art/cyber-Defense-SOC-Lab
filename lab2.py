@@ -21,46 +21,48 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Local Agent Configuration
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"), override=True)
+# ==========================================
+# LOCAL AGENT & CLOUD RELAY CONFIGURATION
+# ==========================================
+
+# تحميل إعدادات الاتصال من ملف .env
+load_dotenv(
+    dotenv_path=os.path.join(os.path.dirname(__file__), ".env"),
+    override=True
+)
+
+# عنوان الـ Agent الذي يعمل على جهاز الطالب
 AGENT_URL = "http://127.0.0.1:8000"
-# عنوان خادم Cloudflare المسؤول عن نقل الأوامر بين الموقع وأجهزة الطلاب
-RELAY_URL = "https://solitary-hall-00cf.hawraaraed69.workers.dev"
-# معرّف الطالب الذي يحدد الجهاز المطلوب إرسال أمر الفحص إليه
-STUDENT_ID = os.getenv("STUDENT_ID", "student01")
-# بيانات مصادقة الطالب الخاصة بكل جلسة
-# حقل إدخال رمز الطالب ليظهر في واجهة المختبر
-# حقل عادي لإدخال رمز الطالب
 
-# زر فتح نافذة إدخال رمز الطالب
-if st.button("🔑 Enter Student Token"):
-    st.session_state.show_token_input = True
+# عنوان Cloudflare Relay
+RELAY_URL = "https://solitary-hall-00cf.workers.dev"
 
-# إظهار حقل الرمز عند الضغط على الزر
-if st.session_state.get("show_token_input", False):
-    STUDENT_TOKEN = st.text_input(
-        "Student Token",
-        type="default",
-        key="student_token_input"
-    )
-else:
-    STUDENT_TOKEN = st.session_state.get("student_token_input", "")
-
-    # تحديث الرمز بعد إدخاله
-    if STUDENT_TOKEN:
-        st.success("Student Token entered successfully")
-    else:
-        st.warning("Student Token not entered")
-
-# تحميل مفتاح المصادقة الخاص بتطبيق Streamlit للاتصال بخادم Relay
-# يُقرأ من إعدادات Streamlit Cloud أو من متغيرات البيئة عند التشغيل المحلي
+# قراءة هوية الطالب ورموز الاتصال
+# نقرأ من Streamlit Secrets أولاً، ثم من .env عند التشغيل المحلي
 try:
-    RELAY_APP_SECRET = st.secrets.get("APP_SECRET", os.getenv("APP_SECRET", ""))
-except Exception:
-    RELAY_APP_SECRET = os.getenv("APP_SECRET", "")
-AGENT_TOKEN = os.getenv("SOC_AGENT_TOKEN")
-st.write("Token loaded:", bool(AGENT_TOKEN))
+    STUDENT_ID = st.secrets.get(
+        "STUDENT_ID",
+        os.getenv("STUDENT_ID", "student01")
+    )
 
+    STUDENT_TOKEN = st.secrets.get(
+        "STUDENT_TOKEN",
+        os.getenv("SOC_AGENT_TOKEN", "")
+    )
+
+    RELAY_APP_SECRET = st.secrets.get(
+        "APP_SECRET",
+        os.getenv("APP_SECRET", "")
+    )
+
+except Exception:
+    STUDENT_ID = os.getenv("STUDENT_ID", "student01")
+    STUDENT_TOKEN = os.getenv("SOC_AGENT_TOKEN", "")
+    RELAY_APP_SECRET = os.getenv("APP_SECRET", "")
+
+# إظهار حالة الإعدادات دون كشف أي رمز سري
+if not STUDENT_TOKEN:
+    st.warning("Student authentication is not configured.")
 # ==========================================
 # 2. SOC THEME
 # ==========================================
