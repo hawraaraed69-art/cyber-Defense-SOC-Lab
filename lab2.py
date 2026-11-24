@@ -1,4 +1,3 @@
-import io
 import ipaddress
 import os
 import re
@@ -7,19 +6,6 @@ from datetime import datetime, timezone
 import requests
 import streamlit as st
 from dotenv import load_dotenv
-from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import mm
-from reportlab.platypus import (
-    SimpleDocTemplate,
-    Paragraph,
-    Spacer,
-    Table,
-    TableStyle,
-    Preformatted,
-)
 
 # =========================================================
 # 1. PAGE CONFIGURATION
@@ -67,7 +53,6 @@ DEFAULT_STATE = {
     "student_token": "",
     "last_scan": None,
     "last_capture": [],
-    "last_banner": None,
     "network_interfaces": [],
     "last_risk": None,
     "last_findings": [],
@@ -174,165 +159,6 @@ def validate_nmap_options(options):
 
     return errors
 
-
-def build_pdf_report():
-    """إنشاء تقرير PDF من آخر نتائج محفوظة في جلسة الطالب."""
-
-    buffer = io.BytesIO()
-    document = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        rightMargin=18 * mm,
-        leftMargin=18 * mm,
-        topMargin=18 * mm,
-        bottomMargin=18 * mm,
-        title="Cyber Defense SOC Lab Report",
-        author="Cyber Defense SOC Lab",
-    )
-
-    styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(
-        name="ReportTitle",
-        parent=styles["Title"],
-        alignment=TA_CENTER,
-        textColor=colors.HexColor("#007C91"),
-        spaceAfter=12,
-    ))
-    styles.add(ParagraphStyle(
-        name="SectionHeading",
-        parent=styles["Heading2"],
-        textColor=colors.HexColor("#007C91"),
-        spaceBefore=12,
-        spaceAfter=6,
-    ))
-
-    story = [
-        Paragraph("Cyber Defense SOC Lab", styles["ReportTitle"]),
-        Paragraph("Network Security Assessment Report", styles["Heading2"]),
-        Spacer(1, 6),
-        Paragraph(
-            f"Student ID: {st.session_state.student_id}",
-            styles["BodyText"],
-        ),
-        Paragraph(
-            f"Generated: {datetime.now(timezone.utc).astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')}",
-            styles["BodyText"],
-        ),
-        Spacer(1, 12),
-    ]
-
-    scan = st.session_state.last_scan
-    if scan:
-        story.append(Paragraph("Nmap Scan", styles["SectionHeading"]))
-        story.append(Paragraph(
-            f"Target: {scan.get('target', 'N/A')} | "
-            f"Options: {', '.join(scan.get('options', []))}",
-            styles["BodyText"],
-        ))
-        risk = st.session_state.last_risk or {}
-        story.append(Paragraph(
-            f"Risk indicator score: {risk.get('score', 'N/A')}/100 | "
-            f"Level: {risk.get('level', 'N/A')}",
-            styles["BodyText"],
-        ))
-        story.append(Spacer(1, 6))
-        story.append(Preformatted(
-            scan.get("output", "No scan output."),
-            styles["Code"],
-        ))
-    else:
-        story.append(Paragraph(
-            "No Nmap scan has been performed in this session.",
-            styles["BodyText"],
-        ))
-
-    findings = st.session_state.last_findings
-    if findings:
-        story.append(Paragraph("Risk Findings", styles["SectionHeading"]))
-        table_data = [["Port", "Service", "Risk", "Reason"]]
-        for item in findings:
-            table_data.append([
-                str(item.get("port", "")),
-                str(item.get("service", "")),
-                str(item.get("risk", "")),
-                str(item.get("reason", "")),
-            ])
-        findings_table = Table(
-            table_data,
-            repeatRows=1,
-            colWidths=[18 * mm, 30 * mm, 22 * mm, 95 * mm],
-        )
-        findings_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#DCEFF2")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#102A35")),
-            ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("FONTSIZE", (0, 0), (-1, -1), 8),
-            ("LEFTPADDING", (0, 0), (-1, -1), 5),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-        ]))
-        story.append(findings_table)
-
-    story.append(Paragraph("Network Traffic Capture", styles["SectionHeading"]))
-    packets = st.session_state.last_capture
-    if packets:
-        story.append(Paragraph(
-            f"Packets captured: {len(packets)}",
-            styles["BodyText"],
-        ))
-        packet_rows = [["No.", "Source", "Destination", "Protocol", "Length"]]
-        for index, packet in enumerate(packets, start=1):
-            packet_rows.append([
-                str(index),
-                str(packet.get("source", packet.get("src", ""))),
-                str(packet.get("destination", packet.get("dst", ""))),
-                str(packet.get("protocol", packet.get("proto", ""))),
-                str(packet.get("length", "")),
-            ])
-        packet_table = Table(
-            packet_rows,
-            repeatRows=1,
-            colWidths=[12 * mm, 38 * mm, 38 * mm, 35 * mm, 22 * mm],
-        )
-        packet_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#DCEFF2")),
-            ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
-            ("FONTSIZE", (0, 0), (-1, -1), 7),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ]))
-        story.append(packet_table)
-    else:
-        story.append(Paragraph(
-            "No traffic capture has been performed in this session.",
-            styles["BodyText"],
-        ))
-
-    banner = st.session_state.last_banner
-    story.append(Paragraph("Banner Grabbing", styles["SectionHeading"]))
-    if banner:
-        story.append(Paragraph(
-            f"Target: {banner.get('target', 'N/A')} | "
-            f"Port: {banner.get('port', 'N/A')}",
-            styles["BodyText"],
-        ))
-        story.append(Preformatted(
-            str(banner.get("banner", "No banner returned.")),
-            styles["Code"],
-        ))
-    else:
-        story.append(Paragraph(
-            "No banner-grabbing result has been recorded.",
-            styles["BodyText"],
-        ))
-
-    story.append(Spacer(1, 16))
-    story.append(Paragraph(
-        "Educational report. Findings are indicators for review and do not, by themselves, prove exploitation or compromise.",
-        styles["Italic"],
-    ))
-
-    document.build(story)
-    return buffer.getvalue()
 
 
 # =========================================================
@@ -499,11 +325,9 @@ st.markdown("---")
 # 10. MAIN TABS
 # =========================================================
 
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2 = st.tabs([
     "🔍 Nmap Reconnaissance",
     "📦 Wireshark Traffic",
-    "🧾 Banner Grabbing",
-    "📄 PDF Reports",
 ])
 
 
@@ -700,105 +524,6 @@ with tab2:
             except Exception as error:
                 st.error(f"Capture failed: {error}")
 
-
-# =========================================================
-# TAB 3: BANNER GRABBING
-# =========================================================
-
-with tab3:
-    st.subheader("🧾 Banner Grabbing")
-    st.write("Retrieve service response information from an authorized target.")
-
-    banner_ip = st.text_input(
-        "Target IP",
-        value="127.0.0.1",
-        key="banner_target_ip",
-    )
-    banner_port = st.number_input(
-        "Target Port",
-        min_value=1,
-        max_value=65535,
-        value=80,
-        step=1,
-        key="banner_target_port",
-    )
-
-    if st.button("🔎 Grab Service Banner", key="banner_grab_button"):
-        try:
-            target = validate_target_ip(banner_ip)
-
-            with st.spinner("Requesting banner from your connected computer..."):
-                data = send_relay_command(
-                    st.session_state.student_id,
-                    st.session_state.student_token,
-                    "banner",
-                    {
-                        "target": target,
-                        "port": int(banner_port),
-                    },
-                    timeout=20,
-                )
-
-            banner_text = data.get("banner", data.get("output", ""))
-            st.session_state.last_banner = {
-                "target": target,
-                "port": int(banner_port),
-                "banner": banner_text,
-            }
-
-            if banner_text:
-                st.success("Service response received.")
-                server_value = data.get("server")
-                if server_value:
-                    st.write("**Detected Server:**", server_value)
-                st.code(banner_text, language="text")
-            else:
-                st.info("The target did not disclose a banner.")
-
-        except ValueError as error:
-            st.error(str(error))
-        except Exception as error:
-            st.error(f"Banner grabbing failed: {error}")
-
-    st.caption("Use only on systems you own or have permission to test.")
-
-
-# =========================================================
-# TAB 4: PDF REPORTS
-# =========================================================
-
-with tab4:
-    st.subheader("📄 Automated PDF Reports")
-    st.write(
-        "Generate a report using the Nmap, traffic capture, and banner results "
-        "saved in your current session."
-    )
-
-    st.caption(
-        "The report includes only results collected in this student session. "
-        "It does not include student tokens."
-    )
-
-    has_results = any([
-        st.session_state.last_scan,
-        st.session_state.last_capture,
-        st.session_state.last_banner,
-    ])
-
-    if has_results:
-        try:
-            pdf_bytes = build_pdf_report()
-            st.download_button(
-                label="⬇️ Download Security Assessment PDF",
-                data=pdf_bytes,
-                file_name=f"CyberDefense_Report_{st.session_state.student_id}.pdf",
-                mime="application/pdf",
-                key="download_pdf_report",
-            )
-        except Exception as error:
-            st.error(f"PDF generation failed: {error}")
-    else:
-        st.info("Run a scan, capture traffic, or grab a banner to create a report.")
 
 
 # =========================================================
