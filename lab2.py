@@ -409,15 +409,52 @@ with tab2:
 
     col1, col2 = st.columns(2)
 
-    # اختيار واجهة الشبكة على جهاز الطالب
-    interface = st.selectbox(
-        "Select Network Interface",
-        [5, 9, 8],
-        format_func=lambda x: {
-            5: "Wi-Fi",
-            9: "Ethernet",
-            8: "Loopback"
-        }[x]
+   # جلب واجهات الشبكة من جهاز الطالب عبر Local Agent
+    if "network_interfaces" not in st.session_state:
+        st.session_state.network_interfaces = []
+
+    if st.button("🔄 Refresh Network Interfaces"):
+        try:
+            response = requests.post(
+                f"{RELAY_URL}/command",
+                json={
+                    "student_id": STUDENT_ID,
+                    "student_token": STUDENT_TOKEN,
+                    "action": "interfaces",
+                    "payload": {}
+                },
+                headers={
+                    "Authorization": f"Bearer {RELAY_APP_SECRET}"
+                },
+                timeout=30
+            )
+
+            response.raise_for_status()
+            result = response.json()
+
+            data = result.get("data", {})
+            st.session_state.network_interfaces = data.get("interfaces", [])
+
+            if st.session_state.network_interfaces:
+                st.success("Network interfaces loaded.")
+            else:
+                st.warning("No network interfaces found.")
+
+        except requests.exceptions.RequestException as e:
+            st.error(f"Interface loading failed: {e}")
+
+    interfaces = st.session_state.network_interfaces
+
+    if interfaces:
+        interface = st.selectbox(
+            "Select Network Interface",
+            options=interfaces,
+            format_func=lambda item: f"{item['id']} - {item['name']}"
+        )
+        selected_interface = interface["id"]
+    else:
+        selected_interface = None
+        st.info("Press Refresh Network Interfaces to load available interfaces.")
     )
 
     # تحديد عدد الحزم
@@ -445,7 +482,7 @@ with tab2:
                         "student_token": STUDENT_TOKEN,
                         "action": "capture",
                         "payload": {
-                        "interface": interface,
+                        "interface": selected_interface,
                         "count": int(packet_count)
                             }
 
