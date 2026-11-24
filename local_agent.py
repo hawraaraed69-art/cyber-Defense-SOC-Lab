@@ -226,6 +226,7 @@ def capture_network(
 
 
 # معالجة الأوامر القادمة من Cloudflare Relay
+         # معالجة الأوامر القادمة من Cloudflare Relay
 def process_relay_command(data):
 
     request_id = data.get("id")
@@ -241,34 +242,73 @@ def process_relay_command(data):
 
         action = data.get("action")
         payload = data.get("payload") or {}
+
+        if not isinstance(payload, dict):
+            raise ValueError("Invalid command payload")
+
         # جلب واجهات الشبكة الحقيقية من جهاز الطالب
         if action == "interfaces":
-            try:
-                result = subprocess.run(
-                    [TSHARK_PATH, "-D"],
-                    capture_output=True,
-                    text=True,
-                    timeout=15
+
+            if not TSHARK_PATH:
+                raise RuntimeError("TShark executable was not found")
+
+            result = subprocess.run(
+                [TSHARK_PATH, "-D"],
+                capture_output=True,
+                text=True,
+                timeout=15
+            )
+
+            if result.returncode != 0:
+                raise RuntimeError(
+                    result.stderr or "Cannot list network interfaces"
                 )
 
-                if result.returncode != 0:
-                    return {"error": result.stderr}
+            interfaces = []
 
-                interfaces = []
+            # تحويل قائمة TShark إلى بيانات منظمة
+            for line in result.stdout.splitlines():
+                match = re.match(r"^\s*(\d+)\.\s+(.+)$", line)
 
-                # تحويل قائمة TShark إلى بيانات منظمة
-                for line in result.stdout.splitlines():
-                    match = re.match(r"^\s*(\d+)\.\s+(.+)$", line)
+                if match:
+                    interfaces.append({
+                        "id": match.group(1),
+                        "name": match.group(2).strip()
+                    })
 
-                    if match:
-                        interfaces.append({
-                            "id": match.group(1),
-                            "name": match.group(2).strip()
-                        })
+            response["data"] = {
+                "interfaces": interfaces
+            }
 
-               response["data"] = {"interfaces": interfaces}
-                return response 
+        # تنفيذ فحص Nmap
+        elif action == "scan":
 
+            result = scan_network(
+                target=payload.get("target"),
+                options=payload.get("options") or ["-sV"],
+                authorized=True
+            )
+
+            response["data"] = result
+
+        # تنفيذ التقاط Wireshark
+        elif action == "capture":
+
+            result = capture_network(
+                interface=payload.get("interface"),
+                count=payload.get("count", 20),
+                authorized=True
+            )
+
+            response["data"] = result
+
+        else:
+            raise ValueError("Unsupported action")
+
+    except Exception as error:
+        response["error"] = str(error)
+
+    return response
             except Exception as e:
               response["error"] = str(e)
              return response  
