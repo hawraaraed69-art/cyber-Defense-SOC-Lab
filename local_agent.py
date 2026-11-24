@@ -266,10 +266,12 @@ def process_relay_command(data):
                             "name": match.group(2).strip()
                         })
 
-                return {"interfaces": interfaces}
+               response["data"] = {"interfaces": interfaces}
+                return response 
 
             except Exception as e:
-                return {"error": str(e)}
+              response["error"] = str(e)
+             return response  
 
         if not isinstance(payload, dict):
             raise ValueError("Invalid command payload")
